@@ -19,11 +19,7 @@ if missing_dependencies:
 del hard_dependencies, dependency, missing_dependencies
 
 # numpy compat
-from pandas.compat.numpy import (
-    _np_version_under1p17,
-    _np_version_under1p18,
-    _is_numpy_dev,
-)
+from pandas.compat import is_numpy_dev as _is_numpy_dev
 
 try:
     from pandas._libs import hashtable as _hashtable, lib as _lib, tslib as _tslib
@@ -33,7 +29,7 @@ except ImportError as e:  # pragma: no cover
     raise ImportError(
         f"C extension: {module} not built. If you want to import "
         "pandas from the source directory, you may need to run "
-        "'python setup.py build_ext --inplace --force' to build the C extensions first."
+        "'python setup.py build_ext --force' to build the C extensions first."
     ) from e
 
 from pandas._config import (
@@ -58,6 +54,8 @@ from pandas.core.api import (
     UInt16Dtype,
     UInt32Dtype,
     UInt64Dtype,
+    Float32Dtype,
+    Float64Dtype,
     CategoricalDtype,
     PeriodDtype,
     IntervalDtype,
@@ -100,6 +98,7 @@ from pandas.core.api import (
     to_datetime,
     to_timedelta,
     # misc
+    Flags,
     Grouper,
     factorize,
     unique,
@@ -164,6 +163,7 @@ from pandas.io.api import (
     read_feather,
     read_gbq,
     read_html,
+    read_xml,
     read_json,
     read_stata,
     read_sas,
@@ -177,7 +177,7 @@ import pandas.testing
 import pandas.arrays
 
 # use the closest tagged version if possible
-from ._version import get_versions
+from pandas._version import get_versions
 
 v = get_versions()
 __version__ = v.get("closest-tag", v["version"])
@@ -186,25 +186,10 @@ del get_versions, v
 
 
 # GH 27101
-# TODO: remove Panel compat in 1.0
 def __getattr__(name):
     import warnings
 
-    if name == "Panel":
-
-        warnings.warn(
-            "The Panel class is removed from pandas. Accessing it "
-            "from the top-level namespace will also be removed in the next version",
-            FutureWarning,
-            stacklevel=2,
-        )
-
-        class Panel:
-            pass
-
-        return Panel
-
-    elif name == "datetime":
+    if name == "datetime":
         warnings.warn(
             "The pandas.datetime class is deprecated "
             "and will be removed from pandas in a future version. "

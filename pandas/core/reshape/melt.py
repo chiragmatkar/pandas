@@ -1,40 +1,55 @@
+from __future__ import annotations
+
 import re
-from typing import TYPE_CHECKING, List, cast
+from typing import (
+    TYPE_CHECKING,
+    cast,
+)
 import warnings
 
 import numpy as np
 
-from pandas.util._decorators import Appender, deprecate_kwarg
+from pandas.util._decorators import (
+    Appender,
+    deprecate_kwarg,
+)
 
-from pandas.core.dtypes.common import is_extension_array_dtype, is_list_like
+from pandas.core.dtypes.common import (
+    is_extension_array_dtype,
+    is_list_like,
+)
 from pandas.core.dtypes.concat import concat_compat
 from pandas.core.dtypes.missing import notna
 
+import pandas.core.algorithms as algos
 from pandas.core.arrays import Categorical
 import pandas.core.common as com
-from pandas.core.indexes.api import Index, MultiIndex
+from pandas.core.indexes.api import (
+    Index,
+    MultiIndex,
+)
 from pandas.core.reshape.concat import concat
-from pandas.core.reshape.util import _tile_compat
+from pandas.core.reshape.util import tile_compat
 from pandas.core.shared_docs import _shared_docs
 from pandas.core.tools.numeric import to_numeric
 
 if TYPE_CHECKING:
-    from pandas import DataFrame, Series  # noqa: F401
+    from pandas import (
+        DataFrame,
+        Series,
+    )
 
 
-@Appender(
-    _shared_docs["melt"]
-    % dict(caller="pd.melt(df, ", versionadded="", other="DataFrame.melt")
-)
+@Appender(_shared_docs["melt"] % {"caller": "pd.melt(df, ", "other": "DataFrame.melt"})
 def melt(
-    frame: "DataFrame",
+    frame: DataFrame,
     id_vars=None,
     value_vars=None,
     var_name=None,
     value_name="value",
     col_level=None,
     ignore_index: bool = True,
-) -> "DataFrame":
+) -> DataFrame:
     # If multiindex, gather names of columns on all level for checking presence
     # of `id_vars` and `value_vars`
     if isinstance(frame.columns, MultiIndex):
@@ -45,7 +60,7 @@ def melt(
     if value_name in frame.columns:
         warnings.warn(
             "This dataframe has a column name that matches the 'value_name' column "
-            "name of the resultiing Dataframe. "
+            "name of the resulting Dataframe. "
             "In the future this will raise an error, please set the 'value_name' "
             "parameter of DataFrame.melt to a unique name.",
             FutureWarning,
@@ -92,7 +107,7 @@ def melt(
                 id_vars + value_vars
             )
         else:
-            idx = frame.columns.get_indexer(id_vars + value_vars)
+            idx = algos.unique(frame.columns.get_indexer_for(id_vars + value_vars))
         frame = frame.iloc[:, idx]
     else:
         frame = frame.copy()
@@ -128,21 +143,28 @@ def melt(
 
     mcolumns = id_vars + var_name + [value_name]
 
-    mdata[value_name] = frame._values.ravel("F")
+    # error: Incompatible types in assignment (expression has type "ndarray",
+    # target has type "Series")
+    mdata[value_name] = frame._values.ravel("F")  # type: ignore[assignment]
     for i, col in enumerate(var_name):
         # asanyarray will keep the columns as an Index
-        mdata[col] = np.asanyarray(frame.columns._get_level_values(i)).repeat(N)
+
+        # error: Incompatible types in assignment (expression has type "ndarray", target
+        # has type "Series")
+        mdata[col] = np.asanyarray(  # type: ignore[assignment]
+            frame.columns._get_level_values(i)
+        ).repeat(N)
 
     result = frame._constructor(mdata, columns=mcolumns)
 
     if not ignore_index:
-        result.index = _tile_compat(frame.index, K)
+        result.index = tile_compat(frame.index, K)
 
     return result
 
 
 @deprecate_kwarg(old_arg_name="label", new_arg_name=None)
-def lreshape(data: "DataFrame", groups, dropna: bool = True, label=None) -> "DataFrame":
+def lreshape(data: DataFrame, groups, dropna: bool = True, label=None) -> DataFrame:
     """
     Reshape wide-format data to long. Generalized inverse of DataFrame.pivot.
 
@@ -205,7 +227,7 @@ def lreshape(data: "DataFrame", groups, dropna: bool = True, label=None) -> "Dat
     else:
         keys, values = zip(*groups)
 
-    all_cols = list(set.union(*[set(x) for x in values]))
+    all_cols = list(set.union(*(set(x) for x in values)))
     id_cols = list(data.columns.difference(all_cols))
 
     K = len(values[0])
@@ -237,8 +259,8 @@ def lreshape(data: "DataFrame", groups, dropna: bool = True, label=None) -> "Dat
 
 
 def wide_to_long(
-    df: "DataFrame", stubnames, i, j, sep: str = "", suffix: str = r"\d+"
-) -> "DataFrame":
+    df: DataFrame, stubnames, i, j, sep: str = "", suffix: str = r"\d+"
+) -> DataFrame:
     r"""
     Wide panel to long format. Less flexible but more user-friendly than melt.
 
@@ -274,12 +296,10 @@ def wide_to_long(
         A regular expression capturing the wanted suffixes. '\\d+' captures
         numeric suffixes. Suffixes with no numbers could be specified with the
         negated character class '\\D+'. You can also further disambiguate
-        suffixes, for example, if your wide variables are of the form
-        A-one, B-two,.., and you have an unrelated column A-rating, you can
-        ignore the last one by specifying `suffix='(!?one|two)'`.
-
-        .. versionchanged:: 0.23.0
-            When all suffixes are numeric, they are cast to int64/float64.
+        suffixes, for example, if your wide variables are of the form A-one,
+        B-two,.., and you have an unrelated column A-rating, you can ignore the
+        last one by specifying `suffix='(!?one|two)'`. When all suffixes are
+        numeric, they are cast to int64/float64.
 
     Returns
     -------
@@ -449,7 +469,7 @@ def wide_to_long(
     8      3      3     2.1     2.9
 
     >>> l = pd.wide_to_long(df, stubnames='ht', i=['famid', 'birth'], j='age',
-    ...                     sep='_', suffix='\w+')
+    ...                     sep='_', suffix=r'\w+')
     >>> l
     ... # doctest: +NORMALIZE_WHITESPACE
                       ht
@@ -474,7 +494,7 @@ def wide_to_long(
                 two  2.9
     """
 
-    def get_var_names(df, stub: str, sep: str, suffix: str) -> List[str]:
+    def get_var_names(df, stub: str, sep: str, suffix: str) -> list[str]:
         regex = fr"^{re.escape(stub)}{re.escape(sep)}{suffix}$"
         pattern = re.compile(regex)
         return [col for col in df.columns if pattern.match(col)]
@@ -488,7 +508,7 @@ def wide_to_long(
             var_name=j,
         )
         newdf[j] = Categorical(newdf[j])
-        newdf[j] = newdf[j].str.replace(re.escape(stub + sep), "")
+        newdf[j] = newdf[j].str.replace(re.escape(stub + sep), "", regex=True)
 
         # GH17627 Cast numerics suffixes to int/float
         newdf[j] = to_numeric(newdf[j], errors="ignore")
